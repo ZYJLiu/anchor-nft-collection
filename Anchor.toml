@@ -2,14 +2,14 @@
 seeds = false
 skip-lint = false
 
-[programs.localnet]
+[programs.devnet]
 anchor_nft_collection = "6cciqj2DU1EFPkPg8adbbcCXmViopbFymXUQehYC6Fa"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "devnet"
 wallet = "/Users/johnliu/.config/solana/id.json"
 
 [scripts]
