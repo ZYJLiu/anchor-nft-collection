@@ -13,7 +13,7 @@ use mpl_token_metadata::{
     state::{CollectionDetails, Creator, DataV2},
 };
 
-declare_id!("6cciqj2DU1EFPkPg8adbbcCXmViopbFymXUQehYC6Fa");
+declare_id!("6zy7hgSLkyS9RQur7TCSkh3JiCtiqLPowvtfELvfuduw");
 
 #[constant]
 pub const SEED: &str = "Collection";
@@ -29,27 +29,34 @@ pub mod anchor_nft_collection {
         symbol: String,
     ) -> Result<()> {
         // PDA for signing
-        let signer_seeds: &[&[&[u8]]] = &[&[SEED.as_bytes(), &[*ctx.bumps.get("mint").unwrap()]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            SEED.as_bytes(),
+            &[*ctx.bumps.get("collection_mint").unwrap()],
+        ]];
 
-        let cpi_ctx = CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.mint.to_account_info(),
-                to: ctx.accounts.token_account.to_account_info(),
-                authority: ctx.accounts.mint.to_account_info(),
-            },
-            signer_seeds,
-        );
-        mint_to(cpi_ctx, 1)?;
+        // mint collection nft
+        mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.collection_mint.to_account_info(),
+                    to: ctx.accounts.token_account.to_account_info(),
+                    authority: ctx.accounts.collection_mint.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            1,
+        )?;
 
+        // create metadata account for collection nft
         create_metadata_accounts_v3(
             CpiContext::new_with_signer(
                 ctx.accounts.token_metadata_program.to_account_info(),
                 CreateMetadataAccountsV3 {
                     metadata: ctx.accounts.metadata_account.to_account_info(),
-                    mint: ctx.accounts.mint.to_account_info(),
-                    mint_authority: ctx.accounts.mint.to_account_info(),
-                    update_authority: ctx.accounts.mint.to_account_info(),
+                    mint: ctx.accounts.collection_mint.to_account_info(),
+                    mint_authority: ctx.accounts.collection_mint.to_account_info(), // use pda mint address as mint authority
+                    update_authority: ctx.accounts.collection_mint.to_account_info(), // use pda mint as update authority
                     payer: ctx.accounts.authority.to_account_info(),
                     system_program: ctx.accounts.system_program.to_account_info(),
                     rent: ctx.accounts.rent.to_account_info(),
@@ -71,18 +78,19 @@ pub mod anchor_nft_collection {
             },
             true,
             true,
-            Some(CollectionDetails::V1 { size: 0 }),
+            Some(CollectionDetails::V1 { size: 0 }), // set as collection nft
         )?;
 
+        // create master edition account for collection nft
         create_master_edition_v3(
             CpiContext::new_with_signer(
                 ctx.accounts.token_metadata_program.to_account_info(),
                 CreateMasterEditionV3 {
                     payer: ctx.accounts.authority.to_account_info(),
-                    mint: ctx.accounts.mint.to_account_info(),
+                    mint: ctx.accounts.collection_mint.to_account_info(),
                     edition: ctx.accounts.master_edition.to_account_info(),
-                    mint_authority: ctx.accounts.mint.to_account_info(),
-                    update_authority: ctx.accounts.mint.to_account_info(),
+                    mint_authority: ctx.accounts.collection_mint.to_account_info(),
+                    update_authority: ctx.accounts.collection_mint.to_account_info(),
                     metadata: ctx.accounts.metadata_account.to_account_info(),
                     token_program: ctx.accounts.token_program.to_account_info(),
                     system_program: ctx.accounts.system_program.to_account_info(),
@@ -93,6 +101,7 @@ pub mod anchor_nft_collection {
             Some(0),
         )?;
 
+        // verify creator on metadata account
         sign_metadata(CpiContext::new(
             ctx.accounts.token_metadata_program.to_account_info(),
             SignMetadata {
@@ -115,19 +124,21 @@ pub mod anchor_nft_collection {
             &[*ctx.bumps.get("collection_mint").unwrap()],
         ]];
 
-        // mint 1 nft to customer token account
-        let cpi_ctx = CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.nft_mint.to_account_info(),
-                to: ctx.accounts.token_account.to_account_info(),
-                authority: ctx.accounts.collection_mint.to_account_info(),
-            },
-            signer_seeds,
-        );
-        mint_to(cpi_ctx, 1)?;
+        // mint nft in collection
+        mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.nft_mint.to_account_info(),
+                    to: ctx.accounts.token_account.to_account_info(),
+                    authority: ctx.accounts.collection_mint.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            1,
+        )?;
 
-        // create metadata account
+        // create metadata account for nft in collection
         create_metadata_accounts_v3(
             CpiContext::new_with_signer(
                 ctx.accounts.token_metadata_program.to_account_info(),
@@ -156,7 +167,7 @@ pub mod anchor_nft_collection {
             None,
         )?;
 
-        // create master edition account
+        // create master edition account for nft in collection
         create_master_edition_v3(
             CpiContext::new_with_signer(
                 ctx.accounts.token_metadata_program.to_account_info(),
@@ -212,29 +223,29 @@ pub struct CreateCollectionNft<'info> {
         bump,
         payer = authority,
         mint::decimals = 0,
-        mint::authority = mint,
-        mint::freeze_authority = mint
+        mint::authority = collection_mint,
+        mint::freeze_authority = collection_mint
     )]
-    pub mint: Account<'info, Mint>,
+    pub collection_mint: Account<'info, Mint>,
 
     /// CHECK:
     #[account(
         mut,
-        address=find_metadata_account(&mint.key()).0
+        address=find_metadata_account(&collection_mint.key()).0
     )]
     pub metadata_account: UncheckedAccount<'info>,
 
     /// CHECK:
     #[account(
         mut,
-        address=find_master_edition_account(&mint.key()).0
+        address=find_master_edition_account(&collection_mint.key()).0
     )]
     pub master_edition: UncheckedAccount<'info>,
 
     #[account(
         init_if_needed,
         payer = authority,
-        associated_token::mint = mint,
+        associated_token::mint = collection_mint,
         associated_token::authority = authority
     )]
     pub token_account: Account<'info, TokenAccount>,
